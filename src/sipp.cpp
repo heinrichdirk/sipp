@@ -92,7 +92,6 @@ struct sipp_option {
 #define SIPP_OPTION_BOOL          10
 #define SIPP_OPTION_VERSION       11
 #define SIPP_OPTION_TRANSPORT     12
-#define SIPP_OPTION_NEED_SSL      13
 #define SIPP_OPTION_IP            14
 #define SIPP_OPTION_MAX_SOCKET    15
 #define SIPP_OPTION_CSEQ          16
@@ -164,16 +163,12 @@ struct sipp_option options_table[] = {
         "- ui: UDP with one socket per IP address. The IP addresses must be defined in the injection file.\n"
         "- t1: TCP with one socket,\n"
         "- tn: TCP with one socket per call,\n"
-#ifdef USE_TLS
         "- l1: TLS with one socket,\n"
         "- ln: TLS with one socket per call,\n"
-#endif
 #ifdef USE_SCTP
         "- s1: SCTP with one socket,\n"
         "- sn: SCTP with one socket per call,\n"
 #endif
-        "- c1: u1 + compression (only if compression plugin loaded),\n"
-        "- cn: un + compression (only if compression plugin loaded).  This plugin is not provided with SIPp.\n"
         , SIPP_OPTION_TRANSPORT, nullptr, 1
     },
     {"i", "Set the local IP address for 'Contact:','Via:', and 'From:' headers. Default is primary host IP address.\n", SIPP_OPTION_IP, local_ip, 1},
@@ -190,19 +185,11 @@ struct sipp_option options_table[] = {
     {"reconnect_sleep", "How long (in milliseconds) to sleep between the close and reconnect?", SIPP_OPTION_TIME_MS, &reset_sleep, 1},
     {"rsa", "Set the remote sending address to host:port for sending the messages.", SIPP_OPTION_RSA, nullptr, 1},
 
-#ifdef USE_TLS
     {"tls_cert", "Set the name for TLS Certificate file. Default is 'cacert.pem'", SIPP_OPTION_STRING, &tls_cert_name, 1},
     {"tls_key", "Set the name for TLS Private Key file. Default is 'cakey.pem'", SIPP_OPTION_STRING, &tls_key_name, 1},
     {"tls_ca", "Set the name for TLS CA file. If not specified, X509 verification is not activated.", SIPP_OPTION_STRING, &tls_ca_name, 1},
     {"tls_crl", "Set the name for Certificate Revocation List file. If not specified, X509 CRL is not activated.", SIPP_OPTION_STRING, &tls_crl_name, 1},
     {"tls_version", "Set the TLS protocol version to use (1.0, 1.1, 1.2, 1.3) -- default is autonegotiate", SIPP_OPTION_FLOAT, &tls_version, 1},
-#else
-    {"tls_cert", nullptr, SIPP_OPTION_NEED_SSL, nullptr, 1},
-    {"tls_key", nullptr, SIPP_OPTION_NEED_SSL, nullptr, 1},
-    {"tls_ca", nullptr, SIPP_OPTION_NEED_SSL, nullptr, 1},
-    {"tls_crl", nullptr, SIPP_OPTION_NEED_SSL, nullptr, 1},
-    {"tls_version", nullptr, SIPP_OPTION_NEED_SSL, nullptr, 1},
-#endif
 
 #ifdef USE_SCTP
     {"multihome", "Set multihome address for SCTP", SIPP_OPTION_IP, multihome_ip, 1},
@@ -228,6 +215,7 @@ struct sipp_option options_table[] = {
    {"plugin", "Load a plugin.", SIPP_OPTION_PLUGIN, nullptr, 1},
    {"sleep", "How long to sleep for at startup. Default unit is seconds.", SIPP_OPTION_TIME_SEC, &sleeptime, 1},
    {"skip_rlimit", "Do not perform rlimit tuning of file descriptor limits.  Default: false.", SIPP_OPTION_SETFLAG, &skip_rlimit, 1},
+   {"preexit_jump", "When SIGUSR1 is received, jump active calls to the specified scenario label before graceful shutdown. Example: -preexit_jump __pre_exit__", SIPP_OPTION_STRING, &pre_exit_jump_label, 1},
    {"buff_size", "Set the send and receive buffer size.", SIPP_OPTION_INT, &buff_size, 1},
    {"sendbuffer_warn", "Produce warnings instead of errors on SendBuffer failures.", SIPP_OPTION_BOOL, &sendbuffer_warn, 1},
    {"lost", "Set the number of packets to lose by default (scenario specifications override this value).", SIPP_OPTION_FLOAT, &global_lost, 1},
@@ -243,6 +231,8 @@ struct sipp_option options_table[] = {
 
     {"", "Call behavior options:", SIPP_HELP_TEXT_HEADER, nullptr, 0},
     {"aa", "Enable automatic 200 OK answer for INFO, NOTIFY, OPTIONS and UPDATE.", SIPP_OPTION_SETFLAG, &auto_answer, 1},
+    {"aai", "Set the Sender IP for aa INFO, NOTIFY, OPTIONS and UPDATE.", SIPP_OPTION_IP, &automatic_answer_ip, 1},
+
     {"base_cseq", "Start value of [cseq] for each call.", SIPP_OPTION_CSEQ, nullptr, 1},
     {"cid_str", "Call ID string (default %u-%p@%s).  %u=call_number, %s=ip_address, %p=process_number, %r=random_integer, %%=% (in any order).", SIPP_OPTION_STRING, &call_id_string, 1},
     {"d", "Controls the length of calls. More precisely, this controls the duration of 'pause' instructions in the scenario, if they do not have a 'milliseconds' section. Default value is 0 and default unit is milliseconds.", SIPP_OPTION_TIME_MS, &duration, 1},
@@ -300,9 +290,7 @@ struct sipp_option options_table[] = {
     {"rtp_threadtasks", "RTP number of playback tasks per thread.", SIPP_OPTION_INT, &rtp_tasks_per_thread, 1},
     {"rtp_buffsize", "Set the rtp socket send/receive buffer size.", SIPP_OPTION_INT, &rtp_buffsize, 1},
     {"rtpcheck_debug", "Write RTP check debug information to file", SIPP_OPTION_SETFLAG, &rtpcheck_debug, 1},
-#ifdef USE_TLS
     {"srtpcheck_debug", "Write SRTP check debug information to file", SIPP_OPTION_SETFLAG, &srtpcheck_debug, 1},
-#endif // USE_TLS
     {"audiotolerance", "Audio error tolerance for RTP checks (0.0-1.0) -- default: 1.0", SIPP_OPTION_FLOAT, &audiotolerance, 1},
     {"videotolerance", "Video error tolerance for RTP checks (0.0-1.0) -- default: 1.0", SIPP_OPTION_FLOAT, &videotolerance, 1},
     {"random_base_ssrc", "Use a random base SSRC for RTP streams instead of default value 0xCA110000", SIPP_OPTION_SETFLAG, &random_base_ssrc, 1},
@@ -360,7 +348,7 @@ struct sipp_option options_table[] = {
     {"", "Performance and watchdog options:", SIPP_HELP_TEXT_HEADER, nullptr, 0},
     {"timer_resol", "Set the timer resolution. Default unit is milliseconds.  This option has an impact on timers precision."
      "Small values allow more precise scheduling but impacts CPU usage."
-     "If the compression is on, the value is set to 50ms. The default value is 10ms.", SIPP_OPTION_TIME_MS, &timer_resolution, 1},
+     "The default value is 10ms.", SIPP_OPTION_TIME_MS, &timer_resolution, 1},
     {"max_recv_loops", "Set the maximum number of messages received read per cycle. Increase this value for high traffic level.  The default value is 1000.", SIPP_OPTION_INT, &max_recv_loops, 1},
     {"max_sched_loops", "Set the maximum number of calls run per event loop. Increase this value for high traffic level.  The default value is 1000.", SIPP_OPTION_INT, &max_sched_loops, 1},
 
@@ -459,7 +447,13 @@ extern SIPpSocket  *sockets[SIPP_MAXFDS];
 static void sipp_sigusr1(int /* not used */)
 {
     /* Smooth exit: do not place any new calls and exit */
-    quitting += 10;
+    if (pre_exit_jump_label && pre_exit_jump_label[0]) {
+        sigusr1_pre_exit_jump_requested = 1;
+        sigusr1_wake_paused_tasks_requested = 1;
+    }
+    if (quitting < 10) {
+        quitting = 10;
+    }
 }
 
 static void sipp_sigusr2(int /* not used */)
@@ -531,7 +525,7 @@ static void traffic_thread(int &rtp_errors, int &echo_errors)
         }
         if (quitting) {
             /* Quitting and no more opened calls, close all */
-            if ((quitting >= 11) || !main_scenario->stats->GetStat(CStat::CPT_C_CurrentCall)) {
+            if ((quitting >= 11) || !live_call_count) {
                 /* We can have calls that do not count towards our open-call count (e.g., dead calls). */
                 abort_all_tasks();
                 rtp_errors = rtpstream_shutdown(main_scenario->fetchRtpTaskThreadIDs());
@@ -558,6 +552,11 @@ static void traffic_thread(int &rtp_errors, int &echo_errors)
         }
 
         update_clock_tick();
+
+        if (sigusr1_wake_paused_tasks_requested) {
+            last_woken_calls += wake_paused_tasks();
+            sigusr1_wake_paused_tasks_requested = 0;
+        }
 
         /* Schedule all pending calls and process their timers */
         task_list *running_tasks;
@@ -915,6 +914,8 @@ static void help()
         "   USR1: Similar to pressing the 'q' key. It triggers a soft exit\n"
         "         of SIPp. No more new calls are placed and all ongoing calls\n"
         "         are finished before SIPp exits.\n"
+        "         With -preexit_jump <label>, active calls jump to that label\n"
+        "         once before graceful shutdown.\n"
         "         Example: kill -SIGUSR1 732\n"
         "   USR2: Triggers a dump of all statistics screens in\n"
         "         <scenario_name>_<pid>_screens.log file. Especially useful \n"
@@ -1412,6 +1413,7 @@ int main(int argc, char *argv[])
 
     pid = getpid();
     memset(local_ip, 0, sizeof(local_ip));
+    memset(automatic_answer_ip, 0, sizeof(automatic_answer_ip));
 #ifdef USE_SCTP
     memset(multihome_ip, 0, sizeof(multihome_ip));
 #endif
@@ -1455,18 +1457,14 @@ int main(int argc, char *argv[])
                 printf("\n %s.\n\n",
                        /* SIPp v1.2.3-TLS-PCAP */
                        "SIPp " SIPP_VERSION
-#ifdef USE_TLS
                        "-TLS"
-#endif
 #ifdef USE_SCTP
                        "-SCTP"
 #endif
 #ifdef PCAPPLAY
                        "-PCAP"
 #endif
-#ifdef USE_SHA256
                        "-SHA256"
-#endif
                        );
 
                 printf
@@ -1633,22 +1631,12 @@ int main(int argc, char *argv[])
 #endif
                     break;
                 case 'l':
-#ifdef USE_TLS
                     transport = T_TLS;
                     if (TLS_init() != 1) {
                         printf("TLS initialization problem\n");
                         exit(-1);
                     }
-#else
-                    ERROR("To use TLS transport you must compile SIPp with OpenSSL or WolfSSL");
-#endif
                     break;
-                case 'c':
-                    if (strlen(comp_error)) {
-                        ERROR("No " COMP_PLUGIN " plugin available: %s", comp_error);
-                    }
-                    transport = T_UDP;
-                    compression = 1;
                 }
                 switch(argv[argi][1]) {
                 case '1':
@@ -1672,10 +1660,6 @@ int main(int argc, char *argv[])
             case SIPP_OPTION_NEED_SCTP:
                 CHECK_PASS();
                 ERROR("SCTP support is required for the %s option.", argv[argi]);
-                break;
-            case SIPP_OPTION_NEED_SSL:
-                CHECK_PASS();
-                ERROR("TLS support is required for the %s option.", argv[argi]);
                 break;
             case SIPP_OPTION_MAX_SOCKET:
                 REQUIRE_ARG();
@@ -1753,9 +1737,6 @@ int main(int argc, char *argv[])
                 if (main_scenario) {
                     ERROR("Internal error, main_scenario already set");
                 } else if (!strcmp(argv[argi - 1], "-sf")) {
-                    if (useLogf == 1) {
-                        rotate_logfile();
-                    }
                     main_scenario = new scenario(argv[argi], 0);
                 } else if (!strcmp(argv[argi - 1], "-sn")) {
                     int i = find_scenario(argv[argi]);
@@ -1981,13 +1962,6 @@ int main(int argc, char *argv[])
         global_ssrc_id = 0xCA110000;
     }
 
-    /* Load compression plugin if needed/available. */
-    if (compression) {
-        if (comp_load()) {
-            ERROR("Could not load " COMP_PLUGIN " plugin: %s", comp_error);
-        }
-    }
-
     if ((extendedTwinSippMode && !slave_masterSet) || (!extendedTwinSippMode && slave_masterSet)) {
         ERROR("-slave_cfg option must be used with -slave or -master option");
     }
@@ -2015,11 +1989,13 @@ int main(int argc, char *argv[])
     }
     scenario_file = main_scenario->getFileName().c_str();
 
-#ifdef USE_TLS
     if ((transport == T_TLS) && (TLS_init_context() != TLS_INIT_NORMAL)) {
         ERROR("FI_init_ssl_context() failed");
     }
-#endif
+
+    if (useLogf == 1) {
+        rotate_logfile();
+    }
 
     if (useMessagef == 1) {
         rotate_messagef();

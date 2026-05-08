@@ -71,7 +71,6 @@
 #include "socket.hpp"
 #include "socketowner.hpp"
 #include "call.hpp"
-#include "comp.h"
 #include "variables.hpp"
 #include "stat.hpp"
 #include "actions.hpp"
@@ -106,12 +105,10 @@
 #define T_TLS                      2
 #define T_SCTP                     3
 
-#ifdef USE_TLS
 #define DEFAULT_TLS_CERT           "cacert.pem"
 #define DEFAULT_TLS_KEY            "cakey.pem"
 #define DEFAULT_TLS_CA             ""
 #define DEFAULT_TLS_CRL            ""
-#endif
 
 #define TRANSPORT_TO_STRING(p)     ((p==T_TCP) ? "TCP" : ((p==T_TLS)? "TLS" : ((p==T_UDP)? "UDP" : "SCTP")))
 
@@ -139,10 +136,8 @@
 #define MAX_PEER_SIZE              4096  /* 3pcc extended mode: max size of peer names */
 #define MAX_LOCAL_TWIN_SOCKETS     10    /*3pcc extended mode:max number of peers from which
 cmd messages are received */
-#ifdef USE_TLS
 #define DEFAULT_PREFERRED_AUDIO_CRYPTOSUITE ((char*)"AES_CM_128_HMAC_SHA1_80")
 #define DEFAULT_PREFERRED_VIDEO_CRYPTOSUITE ((char*)"AES_CM_128_HMAC_SHA1_80")
-#endif // USE_TLS
 
 /******************** Default parameters ***********************/
 
@@ -203,7 +198,6 @@ MAYBE_EXTERN unsigned long      deadcall_wait           DEFVAL(DEFAULT_DEADCALL_
 MAYBE_EXTERN bool               pause_msg_ign           DEFVAL(0);
 MAYBE_EXTERN bool               auto_answer             DEFVAL(false);
 MAYBE_EXTERN int                multisocket             DEFVAL(0);
-MAYBE_EXTERN int                compression             DEFVAL(0);
 MAYBE_EXTERN int                peripsocket             DEFVAL(0);
 MAYBE_EXTERN int                peripfield              DEFVAL(0);
 MAYBE_EXTERN bool               bind_local              DEFVAL(false);
@@ -235,6 +229,7 @@ MAYBE_EXTERN int                max_sched_loops         DEFVAL(MAX_SCHED_LOOPS_P
 MAYBE_EXTERN unsigned int       global_t2               DEFVAL(DEFAULT_T2_TIMER_VALUE);
 
 MAYBE_EXTERN char               local_ip[127];          /* also used for hostnames */
+MAYBE_EXTERN char               automatic_answer_ip[127];   /* ip address for automatic answers */
 MAYBE_EXTERN char               local_ip_w_brackets[42]; /* with [brackets] in case of IPv6 */
 MAYBE_EXTERN bool               local_ip_is_ipv6;
 MAYBE_EXTERN int                local_port              DEFVAL(0);
@@ -257,9 +252,7 @@ MAYBE_EXTERN int                rtp_default_payload     DEFVAL(DEFAULT_RTP_PAYLO
 MAYBE_EXTERN int                rtp_tasks_per_thread    DEFVAL(DEFAULT_RTP_THREADTASKS);
 MAYBE_EXTERN int                rtp_buffsize            DEFVAL(65536);
 MAYBE_EXTERN bool               rtpcheck_debug          DEFVAL(0);
-#ifdef USE_TLS
 MAYBE_EXTERN bool               srtpcheck_debug         DEFVAL(0);
-#endif // USE_TLS
 MAYBE_EXTERN double             audiotolerance          DEFVAL(1.0);
 MAYBE_EXTERN double             videotolerance          DEFVAL(1.0);
 
@@ -275,6 +268,9 @@ MAYBE_EXTERN unsigned int       pid                     DEFVAL(0);
 MAYBE_EXTERN bool               print_all_responses     DEFVAL(false);
 MAYBE_EXTERN unsigned long      stop_after              DEFVAL(0xffffffff);
 MAYBE_EXTERN int                quitting                DEFVAL(0);
+MAYBE_EXTERN volatile sig_atomic_t sigusr1_pre_exit_jump_requested DEFVAL(0);
+MAYBE_EXTERN volatile sig_atomic_t sigusr1_wake_paused_tasks_requested DEFVAL(0);
+MAYBE_EXTERN unsigned long live_call_count DEFVAL(0);
 MAYBE_EXTERN int                interrupt               DEFVAL(0);
 MAYBE_EXTERN bool               paused                  DEFVAL(false);
 MAYBE_EXTERN int                lose_packets            DEFVAL(0);
@@ -291,6 +287,7 @@ MAYBE_EXTERN bool               extendedTwinSippMode    DEFVAL(false);
 MAYBE_EXTERN bool               nostdin                 DEFVAL(false);
 MAYBE_EXTERN bool               backgroundMode          DEFVAL(false);
 MAYBE_EXTERN bool               signalDump              DEFVAL(false);
+MAYBE_EXTERN const char       * pre_exit_jump_label     DEFVAL(nullptr);
 
 MAYBE_EXTERN int                currentScreenToDisplay  DEFVAL
 (DISPLAY_SCENARIO_SCREEN);
@@ -315,13 +312,11 @@ MAYBE_EXTERN unsigned int       tdm_map_z               DEFVAL(0);
 MAYBE_EXTERN unsigned int       tdm_map_h               DEFVAL(0);
 MAYBE_EXTERN bool               tdm_map[1024];
 
-#ifdef USE_TLS
 MAYBE_EXTERN const char       * tls_cert_name           DEFVAL(DEFAULT_TLS_CERT);
 MAYBE_EXTERN const char       * tls_key_name            DEFVAL(DEFAULT_TLS_KEY);
 MAYBE_EXTERN const char       * tls_ca_name             DEFVAL(DEFAULT_TLS_CA);
 MAYBE_EXTERN const char       * tls_crl_name            DEFVAL(DEFAULT_TLS_CRL);
 MAYBE_EXTERN double             tls_version             DEFVAL(0.0);
-#endif
 
 #ifdef SO_BINDTODEVICE
 MAYBE_EXTERN const char       * bind_to_device_name     DEFVAL(nullptr);

@@ -1,10 +1,18 @@
 name: "CodeQL"
 
 on:
-  push:
-    branches: [ "master" ]
   pull_request:
     branches: [ "master" ]
+    paths:
+      - '.github/workflows/codeql.yml'
+      - 'include/**'
+      - 'src/**'
+  push:
+    branches: [ "master" ]
+    paths:
+      - '.github/workflows/codeql.yml'
+      - 'include/**'
+      - 'src/**'
   schedule:
     - cron: "15 23 * * 6"
 
@@ -24,7 +32,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
 
       - name: Install Packages
         run: |
@@ -33,7 +41,7 @@ jobs:
           sudo apt-get install --yes build-essential cmake libpcap-dev openssl libssl-dev libgsl-dev libsctp-dev libncurses-dev libncurses6
 
       - name: Configure
-        run: cmake . -DUSE_GSL=1 -DUSE_PCAP=1 -DUSE_SSL=1 -DUSE_SCTP=1
+        run: cmake . -DUSE_GSL=1 -DUSE_PCAP=1 -DUSE_SCTP=1
 
       - name: Initialize CodeQL
         uses: github/codeql-action/init@v4

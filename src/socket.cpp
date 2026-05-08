@@ -69,6 +69,19 @@ int pending_messages = 0;
 
 std::map<std::string, SIPpSocket *>     map_perip_fd;
 
+static void trim(char *s)
+{
+    char *p = s;
+    while(isspace(*p)) {
+        p++;
+    }
+    int l = strlen(p);
+    for (int i = l - 1; i >= 0 && isspace(p[i]); i--) {
+        p[i] = '\0';
+    }
+    memmove(s, p, l + 1);
+}
+
 static void connect_to_peer(
     char *peer_host, int peer_port, struct sockaddr_storage *peer_sockaddr,
     char *peer_ip, int peer_ip_size, SIPpSocket **peer_socket);
@@ -1310,9 +1323,6 @@ static int socket_fd(bool use_ipv6, int transport)
 #endif
         break;
     case T_TLS:
-#ifndef USE_TLS
-        ERROR("You do not have TLS support enabled!");
-#endif
     case T_TCP:
         socket_type = SOCK_STREAM;
         protocol = IPPROTO_TCP;
@@ -2131,19 +2141,6 @@ ssize_t SIPpSocket::write_primitive(const char* buffer, size_t len,
         break;
 
     case T_UDP:
-        if (compression) {
-            static char comp_msg[SIPP_MAX_MSG_SIZE];
-            strncpy(comp_msg, buffer, sizeof(comp_msg) - 1);
-            if (comp_compress(&ss_comp_state,
-                              comp_msg,
-                              (unsigned int *) &len) != COMP_OK) {
-                ERROR("Compression plugin error");
-            }
-            buffer = (char *)comp_msg;
-
-            TRACE_MSG("---\nCompressed message len: %zu\n", len);
-        }
-
         rc = sendto(ss_fd, buffer, len, 0, _RCAST(struct sockaddr*, dest),
                     socklen_from_addr(dest));
         break;
@@ -2439,7 +2436,14 @@ int open_connections()
         memcpy(&local_addr_storage, &local_sockaddr, sizeof(local_sockaddr));
 
         if (local_sockaddr.ss_family == AF_INET) {
-            strcpy(local_ip_w_brackets, local_ip);
+            //If the auto_answer_local_ip option is used, use this for local_ip_w_brackets
+            if (automatic_answer_ip[0] != '\0') {
+                strcpy(local_ip_w_brackets, automatic_answer_ip);
+            } else  
+            {
+                strcpy(local_ip_w_brackets, local_ip);
+            }
+            
             if (!bind_specific) {
                 _RCAST(struct sockaddr_in*, &local_sockaddr)->sin_addr.s_addr = INADDR_ANY;
             }
@@ -2590,11 +2594,6 @@ int open_connections()
             remote_sockaddr = remote_sending_sockaddr;
         }
         sipp_customize_socket(tcp_multiplex);
-
-        /* This fixes local_port keyword value when transport are TCP|TLS and it's defined by user with "-p" */
-        if (sipp_bind_socket(tcp_multiplex, &local_sockaddr, nullptr)) {
-            ERROR_NO("Unable to bind TCP socket");
-        }
 
         if (tcp_multiplex->connect(&remote_sockaddr)) {
             if (reset_number > 0) {

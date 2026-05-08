@@ -8,7 +8,7 @@ jobs:
     runs-on: ubuntu-24.04
 
     steps:
-    - uses: actions/checkout@v5
+    - uses: actions/checkout@v6
     - name: lint
       run: ./validate-src.sh
     - name: lint-xml
@@ -19,7 +19,7 @@ jobs:
     runs-on: ubuntu-24.04
 
     steps:
-    - uses: actions/checkout@v5
+    - uses: actions/checkout@v6
     - name: prepare
       run: git submodule update --init
     - name: installdeps
@@ -29,27 +29,50 @@ jobs:
     - name: test
       run: TEST_SKIP_VALGRIND=1 ./regress/runtests
 
+  build-system-gtest:
+
+    runs-on: ubuntu-24.04
+
+    steps:
+    - uses: actions/checkout@v6
+    - name: installdeps
+      run: sudo apt-get update && sudo apt-get install --yes build-essential cmake libpcap-dev openssl libssl-dev libgsl-dev libsctp-dev libncurses-dev libncurses6 libgtest-dev
+    - name: build
+      run: |
+        cmake . -DUSE_SCTP=1 -DUSE_PCAP=1 -DUSE_GSL=1 -DUSE_SYSTEM_GTEST=ON
+        make -j$(nproc)
+    - name: unittest
+      run: |
+        make -j$(nproc) sipp_unittest
+        ./sipp_unittest
+    - name: test
+      run: TEST_SKIP_VALGRIND=1 ./regress/runtests
+
   build-osx:
 
     runs-on: macOS-latest
 
     steps:
-    - uses: actions/checkout@v5
+    - uses: actions/checkout@v6
     - name: prepare
-      run: git submodule update --init
+      run: |
+        git submodule update --init
+        brew install openssl@3
     - name: build
-      run: ./build.sh --none
+      run: |
+        export OPENSSL_ROOT_DIR=$(brew --prefix openssl@3)
+        ./build.sh --none
 
 
   build-static:
     runs-on: ubuntu-24.04
     steps:
-    - uses: actions/checkout@v5
+    - uses: actions/checkout@v6
     - name: prepare
       run: git submodule update --init
     - name: build-static
       run: docker build -f docker/Dockerfile --output=. --target=bin .
-    - uses: actions/upload-artifact@v5
+    - uses: actions/upload-artifact@v7
       with:
          name: sipp
          path: ./sipp
@@ -57,7 +80,7 @@ jobs:
   build-wolfssl:
     runs-on: ubuntu-24.04
     steps:
-    - uses: actions/checkout@v5
+    - uses: actions/checkout@v6
     - name: prepare
       run: git submodule update --init
     - name: build-wolfssl

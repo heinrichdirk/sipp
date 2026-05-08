@@ -26,8 +26,19 @@
 #include <string.h>
 
 #include "defines.h"
-#include "endianshim.h"
 #include "prepare_pcap.h"
+
+/* Platform-specific endian conversion */
+#if defined(HAVE_ENDIAN_H)
+#include <endian.h>
+#elif defined(HAVE_SYS_ENDIAN_H)
+#include <sys/endian.h>
+#elif defined(HAVE_OSBYTEORDER_H)
+#include <libkern/OSByteOrder.h>
+#define le16toh(x) OSSwapLittleToHostInt16(x)
+#else
+#error "No endian conversion header found - need endian.h, sys/endian.h, or OSByteOrder.h"
+#endif
 
 #ifndef HAVE_UDP_UH_PREFIX
 #define uh_ulen len
@@ -542,7 +553,7 @@ static void prepare_noop(
 
 /* prepare a dtmf pcap
  */
-int prepare_dtmf(const char* digits, pcap_pkts* pkts, uint16_t start_seq_no)
+int prepare_dtmf(char* digits, pcap_pkts* pkts, uint16_t start_seq_no)
 {
     unsigned long tone_len = 200;
     const u_long pktlen = sizeof(struct dtmfpacket);

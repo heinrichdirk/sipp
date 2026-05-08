@@ -29,7 +29,6 @@
 #include <stdio.h>
 #include <string.h>
 #include <ctype.h>
-#include "md5.h"
 #include "milenage.h"
 #include "screen.hpp"
 #include "logger.hpp"
@@ -41,10 +40,8 @@
 #include <wolfssl/openssl/evp.h>
 #endif
 
-#ifdef USE_SHA256
 #define SHA256_HASH_SIZE 32
 #define SHA256_HASH_HEX_SIZE 2*SHA256_HASH_SIZE
-#endif // USE_SHA256
 
 #define MAX_HEADER_LEN  2049
 #define MD5_HASH_SIZE 16
@@ -100,17 +97,15 @@ static int createAuthHeaderAKAv1MD5(
     const char* auth, const char* algo, unsigned int nonce_count,
     char* result, size_t result_len);
 
-#ifdef USE_SHA256
 static int createAuthHeaderSHA256(
     const char* user, const char* password, int password_len,
     const char* method, const char* uri, const char* msgbody,
     const char* auth, const char* algo, unsigned int nonce_count,
     char* result, size_t result_len);
-#endif // USE_SHA256
 
 /* This function is from RFC 2617 Section 5 */
 
-static void hashToHex(md5_byte_t* _b_raw, unsigned char* _h, unsigned short size)
+static void hashToHex(unsigned char* _b_raw, unsigned char* _h, unsigned short size)
 {
     unsigned short i;
     unsigned char j;
@@ -203,12 +198,10 @@ int createAuthHeader(
         return createAuthHeaderAKAv1MD5(
             user, aka_OP, aka_AMF, aka_K, method, uri, msgbody, auth,
             algo, nonce_count, result, result_len);
-#ifdef USE_SHA256
     } else if (strncasecmp(algo, "SHA-256", 7)==0) {
         return createAuthHeaderSHA256(
             user, password, strlen(password), method, uri, msgbody,
             auth, algo, nonce_count, result, result_len);
-#endif // USE_SHA256
     } else {
         snprintf(result, result_len, "createAuthHeader: authentication must use MD5, AKAv1-MD5 or SHA-256");
         return 0;
@@ -270,21 +263,22 @@ static int createAuthResponseMD5(
     const char* cnonce, const char* nc,
     unsigned char* result)
 {
-    md5_byte_t ha1[MD5_HASH_SIZE], ha2[MD5_HASH_SIZE];
-    md5_byte_t resp[MD5_HASH_SIZE], body[MD5_HASH_SIZE];
+    unsigned char ha1[MD5_HASH_SIZE], ha2[MD5_HASH_SIZE];
+    unsigned char resp[MD5_HASH_SIZE], body[MD5_HASH_SIZE];
     unsigned char body_hex[HASH_HEX_SIZE+1];
     unsigned char ha1_hex[HASH_HEX_SIZE+1], ha2_hex[HASH_HEX_SIZE+1];
     char tmp[MAX_HEADER_LEN];
-    md5_state_t Md5Ctx;
+    unsigned int digest_len = 0;
+    EVP_MD_CTX* mdctx = EVP_MD_CTX_new();
 
     // Load in A1
-    md5_init(&Md5Ctx);
-    md5_append(&Md5Ctx, (md5_byte_t *) user, strlen(user));
-    md5_append(&Md5Ctx, (md5_byte_t *) ":", 1);
-    md5_append(&Md5Ctx, (md5_byte_t *) realm, strlen(realm));
-    md5_append(&Md5Ctx, (md5_byte_t *) ":", 1);
-    md5_append(&Md5Ctx, (md5_byte_t *) password, password_len);
-    md5_finish(&Md5Ctx, ha1);
+    EVP_DigestInit_ex(mdctx, EVP_md5(), nullptr);
+    EVP_DigestUpdate(mdctx, (unsigned char *) user, strlen(user));
+    EVP_DigestUpdate(mdctx, (unsigned char *) ":", 1);
+    EVP_DigestUpdate(mdctx, (unsigned char *) realm, strlen(realm));
+    EVP_DigestUpdate(mdctx, (unsigned char *) ":", 1);
+    EVP_DigestUpdate(mdctx, (unsigned char *) password, password_len);
+    EVP_DigestFinal_ex(mdctx, ha1, &digest_len);
     hashToHex(&ha1[0], &ha1_hex[0], MD5_HASH_SIZE);
 
     if (auth_uri) {
@@ -294,45 +288,44 @@ static int createAuthResponseMD5(
     }
     // If using Auth-Int make a hash of the body - which is NULL for REG
     if (stristr(authtype, "auth-int") != nullptr) {
-        md5_init(&Md5Ctx);
-        md5_append(&Md5Ctx, (md5_byte_t *) msgbody, strlen(msgbody));
-        md5_finish(&Md5Ctx, body);
+        EVP_DigestInit_ex(mdctx, EVP_md5(), nullptr);
+        EVP_DigestUpdate(mdctx, (unsigned char *) msgbody, strlen(msgbody));
+        EVP_DigestFinal_ex(mdctx, body, &digest_len);
         hashToHex(&body[0], &body_hex[0], MD5_HASH_SIZE);
     }
 
     // Load in A2
-    md5_init(&Md5Ctx);
-    md5_append(&Md5Ctx, (md5_byte_t *) method, strlen(method));
-    md5_append(&Md5Ctx, (md5_byte_t *) ":", 1);
-    md5_append(&Md5Ctx, (md5_byte_t *) tmp, strlen(tmp));
+    EVP_DigestInit_ex(mdctx, EVP_md5(), nullptr);
+    EVP_DigestUpdate(mdctx, (unsigned char *) method, strlen(method));
+    EVP_DigestUpdate(mdctx, (unsigned char *) ":", 1);
+    EVP_DigestUpdate(mdctx, (unsigned char *) tmp, strlen(tmp));
     if (stristr(authtype, "auth-int") != nullptr) {
-        md5_append(&Md5Ctx, (md5_byte_t *) ":", 1);
-        md5_append(&Md5Ctx, (md5_byte_t *) &body_hex, HASH_HEX_SIZE);
+        EVP_DigestUpdate(mdctx, (unsigned char *) ":", 1);
+        EVP_DigestUpdate(mdctx, (unsigned char *) &body_hex, HASH_HEX_SIZE);
     }
-    md5_finish(&Md5Ctx, ha2);
+    EVP_DigestFinal_ex(mdctx, ha2, &digest_len);
     hashToHex(&ha2[0], &ha2_hex[0], MD5_HASH_SIZE);
 
-    md5_init(&Md5Ctx);
-    md5_append(&Md5Ctx, (md5_byte_t *) &ha1_hex, HASH_HEX_SIZE);
-    md5_append(&Md5Ctx, (md5_byte_t *) ":", 1);
-    md5_append(&Md5Ctx, (md5_byte_t *) nonce, strlen(nonce));
+    EVP_DigestInit_ex(mdctx, EVP_md5(), nullptr);
+    EVP_DigestUpdate(mdctx, (unsigned char *) &ha1_hex, HASH_HEX_SIZE);
+    EVP_DigestUpdate(mdctx, (unsigned char *) ":", 1);
+    EVP_DigestUpdate(mdctx, (unsigned char *) nonce, strlen(nonce));
     if (cnonce[0] != '\0') {
-        md5_append(&Md5Ctx, (md5_byte_t *) ":", 1);
-        md5_append(&Md5Ctx, (md5_byte_t *) nc, strlen(nc));
-        md5_append(&Md5Ctx, (md5_byte_t *) ":", 1);
-        md5_append(&Md5Ctx, (md5_byte_t *) cnonce, strlen(cnonce));
-        md5_append(&Md5Ctx, (md5_byte_t *) ":", 1);
-        md5_append(&Md5Ctx, (md5_byte_t *) authtype, strlen(authtype));
+        EVP_DigestUpdate(mdctx, (unsigned char *) ":", 1);
+        EVP_DigestUpdate(mdctx, (unsigned char *) nc, strlen(nc));
+        EVP_DigestUpdate(mdctx, (unsigned char *) ":", 1);
+        EVP_DigestUpdate(mdctx, (unsigned char *) cnonce, strlen(cnonce));
+        EVP_DigestUpdate(mdctx, (unsigned char *) ":", 1);
+        EVP_DigestUpdate(mdctx, (unsigned char *) authtype, strlen(authtype));
     }
-    md5_append(&Md5Ctx, (md5_byte_t *) ":", 1);
-    md5_append(&Md5Ctx, (md5_byte_t *) &ha2_hex, HASH_HEX_SIZE);
-    md5_finish(&Md5Ctx, resp);
+    EVP_DigestUpdate(mdctx, (unsigned char *) ":", 1);
+    EVP_DigestUpdate(mdctx, (unsigned char *) &ha2_hex, HASH_HEX_SIZE);
+    EVP_DigestFinal_ex(mdctx, resp, &digest_len);
     hashToHex(&resp[0], result, MD5_HASH_SIZE);
 
     return 1;
 }
 
-#ifdef USE_SHA256
 static int createAuthResponseSHA256(
     const char* user, const char* password, int password_len,
     const char* method, const char* uri, const char* authtype,
@@ -404,7 +397,6 @@ static int createAuthResponseSHA256(
     EVP_MD_CTX_free(mdctx);
     return 1;
 }
-#endif // USE_SHA256
 
 int createAuthHeaderMD5(
     const char* user, const char* password, int password_len,
@@ -543,7 +535,6 @@ int verifyAuthHeader(const char *user, const char *password, const char *method,
                 (char*)result,
                 response);
         return !strcmp((char *)result, response);
-#ifdef USE_SHA256
     } else if (strncasecmp(algo, "SHA-256", 7)==0) {
         unsigned char result[SHA256_HASH_HEX_SIZE + 1];
         char response[SHA256_HASH_HEX_SIZE + 1];
@@ -567,199 +558,37 @@ int verifyAuthHeader(const char *user, const char *password, const char *method,
                 (char*)result,
                 response);
         return !strcmp((char *)result, response);
-#endif // USE_SHA256
     } else {
         WARNING("verifyAuthHeader: authentication must use MD5 or SHA-256, value is '%s'", algo);
         return 0;
     }
 }
 
-
-
-/*"
-ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";*/
-static int base64_val(char x) {
-    switch(x) {
-    case '=':
-        return -1;
-    case 'A':
-        return 0;
-    case 'B':
-        return 1;
-    case 'C':
-        return 2;
-    case 'D':
-        return 3;
-    case 'E':
-        return 4;
-    case 'F':
-        return 5;
-    case 'G':
-        return 6;
-    case 'H':
-        return 7;
-    case 'I':
-        return 8;
-    case 'J':
-        return 9;
-    case 'K':
-        return 10;
-    case 'L':
-        return 11;
-    case 'M':
-        return 12;
-    case 'N':
-        return 13;
-    case 'O':
-        return 14;
-    case 'P':
-        return 15;
-    case 'Q':
-        return 16;
-    case 'R':
-        return 17;
-    case 'S':
-        return 18;
-    case 'T':
-        return 19;
-    case 'U':
-        return 20;
-    case 'V':
-        return 21;
-    case 'W':
-        return 22;
-    case 'X':
-        return 23;
-    case 'Y':
-        return 24;
-    case 'Z':
-        return 25;
-    case 'a':
-        return 26;
-    case 'b':
-        return 27;
-    case 'c':
-        return 28;
-    case 'd':
-        return 29;
-    case 'e':
-        return 30;
-    case 'f':
-        return 31;
-    case 'g':
-        return 32;
-    case 'h':
-        return 33;
-    case 'i':
-        return 34;
-    case 'j':
-        return 35;
-    case 'k':
-        return 36;
-    case 'l':
-        return 37;
-    case 'm':
-        return 38;
-    case 'n':
-        return 39;
-    case 'o':
-        return 40;
-    case 'p':
-        return 41;
-    case 'q':
-        return 42;
-    case 'r':
-        return 43;
-    case 's':
-        return 44;
-    case 't':
-        return 45;
-    case 'u':
-        return 46;
-    case 'v':
-        return 47;
-    case 'w':
-        return 48;
-    case 'x':
-        return 49;
-    case 'y':
-        return 50;
-    case 'z':
-        return 51;
-    case '0':
-        return 52;
-    case '1':
-        return 53;
-    case '2':
-        return 54;
-    case '3':
-        return 55;
-    case '4':
-        return 56;
-    case '5':
-        return 57;
-    case '6':
-        return 58;
-    case '7':
-        return 59;
-    case '8':
-        return 60;
-    case '9':
-        return 61;
-    case '+':
-        return 62;
-    case '/':
-        return 63;
-    }
-    return 0;
-}
-
 static char* base64_decode_string(const char* buf, unsigned int len, int* newlen)
 {
-    unsigned long i;
-    int j, x1, x2, x3, x4;
-    char *out;
-    out = (char *)malloc( ( len * 3/4 ) + 8 );
-    for(i=0, j=0; i + 3 < len; i += 4) {
-        x1=base64_val(buf[i]);
-        x2=base64_val(buf[i+1]);
-        x3=base64_val(buf[i+2]);
-        x4=base64_val(buf[i+3]);
-        out[j++]=(x1<<2) | ((x2 & 0x30)>>4);
-        out[j++]=((x2 & 0x0F)<<4) | ((x3 & 0x3C)>>2);
-        out[j++]=((x3 & 0x03)<<6) | (x4 & 0x3F);
-    }
-    if (i<len) {
-        x1 = base64_val(buf[i]);
-        if (i+1<len)
-            x2=base64_val(buf[i+1]);
-        else
-            x2=-1;
-        if (i+2<len)
-            x3=base64_val(buf[i+2]);
-        else
-            x3=-1;
-        if(i+3<len)
-            x4=base64_val(buf[i+3]);
-        else x4=-1;
-        if (x2!=-1) {
-            out[j++]=(x1<<2) | ((x2 & 0x30)>>4);
-            if (x3==-1) {
-                out[j++]=((x2 & 0x0F)<<4) | ((x3 & 0x3C)>>2);
-                if (x4==-1) {
-                    out[j++]=((x3 & 0x03)<<6) | (x4 & 0x3F);
-                }
-            }
-        }
-
+    char* out = (char*)malloc((len * 3 / 4) + 8);
+    if (!out) {
+        *newlen = 0;
+        return nullptr;
     }
 
-    out[j++] = 0;
-    *newlen=j;
+    int decoded_len = EVP_DecodeBlock((unsigned char*)out,
+                                       (const unsigned char*)buf, len);
+
+    if (decoded_len < 0) {
+        free(out);
+        *newlen = 0;
+        return nullptr;
+    }
+
+    // EVP_DecodeBlock doesn't account for padding
+    if (len > 0 && buf[len - 1] == '=') decoded_len--;
+    if (len > 1 && buf[len - 2] == '=') decoded_len--;
+
+    out[decoded_len] = '\0';
+    *newlen = decoded_len + 1;
     return out;
 }
-
-char base64[65] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
 char hexa[17] = "0123456789abcdef";
 
@@ -893,7 +722,6 @@ static int createAuthHeaderAKAv1MD5(
     return written;
 }
 
-#ifdef USE_SHA256
 int createAuthHeaderSHA256(
     const char* user, const char* password, int password_len,
     const char* method, const char* uri, const char* msgbody,
@@ -987,7 +815,6 @@ int createAuthHeaderSHA256(
 
     return written;
 }
-#endif // USE_SHA256
 
 
 #ifdef GTEST
@@ -1027,7 +854,6 @@ TEST(DigestAuth, BasicVerification) {
     free(header);
 }
 
-#if defined(USE_SHA256)
 TEST(DigestAuth, BasicVerificationSHA256) {
     char* header = strdup(("Digest \r\n"
                            " realm=\"testrealm@host.com\",\r\n"
@@ -1039,7 +865,6 @@ TEST(DigestAuth, BasicVerificationSHA256) {
     EXPECT_EQ(1, verifyAuthHeader("testuser", "secret", "REGISTER", result, "hello world"));
     free(header);
 }
-#endif
 
 TEST(DigestAuth, qop) {
     char result[1024];
